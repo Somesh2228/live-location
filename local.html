@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoPulse - Live Location Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+            background: #1e293b;
+        }
+        /* Custom scrollbar for log */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 overflow-hidden">
+
+    <div id="app" class="flex flex-col h-screen">
+        <!-- Header -->
+        <header class="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between shrink-0 z-30">
+            <div class="flex items-center gap-2">
+                <div class="bg-blue-600 p-2 rounded-lg">
+                    <svg id="nav-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">GeoPulse</h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest font-medium">Live Tracker</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="toggle-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-2 2.5h3L12 7h3l-4 5h5l-9 10 1-9H5l4-5H6l4-5.5h-3L11 2"/></svg>
+                    <span id="btn-text">Start Live</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+            <!-- Main Map Area -->
+            <div class="flex-1 flex flex-col relative">
+                <div id="map"></div>
+
+                <!-- Floating Metrics -->
+                <div class="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap gap-2 pointer-events-none">
+                    <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700 p-3 rounded-2xl shadow-2xl flex items-center gap-4 pointer-events-auto">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-slate-400 uppercase font-bold">Accuracy</span>
+                            <span id="accuracy-val" class="text-sm font-mono text-blue-400">--</span>
+                        </div>
+                        <div class="w-px h-8 bg-slate-700" />
+                        <div class="flex flex-col">
+                            <span class="text-[10px] text-slate-400 uppercase font-bold">Speed</span>
+                            <span id="speed-val" class="text-sm font-mono text-green-400">0.0 km/h</span>
+                        </div>
+                        <button id="follow-btn" class="p-2 rounded-lg transition-colors pointer-events-auto ml-2 bg-blue-600 text-white" title="Lock to Position">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h3m12 0h3M12 3v3m0 12v3"/></svg>
+                        </button>
+                    </div>
+
+                    <div id="error-msg" class="hidden bg-red-500 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-bounce pointer-events-auto">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                        <span id="error-text" class="text-sm font-medium">Error accessing location</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <aside class="w-full md:w-80 bg-slate-800 border-l border-slate-700 flex flex-col shrink-0 overflow-hidden">
+                <div class="p-4 border-b border-slate-700 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+                        <h2 class="font-bold text-sm">Movement Log</h2>
+                    </div>
+                    <button id="clear-btn" class="p-1.5 text-slate-500 hover:text-white transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                </div>
+
+                <div id="log-container" class="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                    <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center p-6 opacity-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-4 text-slate-600"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                        <p class="text-sm">Ready to track your path.</p>
+                        <p class="text-xs text-slate-500 mt-1">Press start to begin logging.</p>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-900/50 border-t border-slate-700">
+                    <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        <span>Local browser session only. Data is not stored on any server.</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Mobile Coordinates -->
+        <div class="md:hidden bg-slate-800 border-t border-slate-700 p-3 grid grid-cols-2 gap-3 shrink-0 z-30">
+            <div class="bg-slate-900 rounded-xl p-2 text-center border border-slate-700">
+               <p class="text-[9px] text-slate-500 uppercase">Latitude</p>
+               <p id="lat-mobile" class="text-xs font-mono text-blue-400 truncate">--</p>
+            </div>
+            <div class="bg-slate-900 rounded-xl p-2 text-center border border-slate-700">
+               <p class="text-[9px] text-slate-500 uppercase">Longitude</p>
+               <p id="lng-mobile" class="text-xs font-mono text-blue-400 truncate">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map, marker, path;
+        let watchId = null;
+        let isTracking = false;
+        let followUser = true;
+        let history = [];
+
+        // UI Elements
+        const toggleBtn = document.getElementById('toggle-btn');
+        const btnText = document.getElementById('btn-text');
+        const navIcon = document.getElementById('nav-icon');
+        const accuracyVal = document.getElementById('accuracy-val');
+        const speedVal = document.getElementById('speed-val');
+        const followBtn = document.getElementById('follow-btn');
+        const errorMsg = document.getElementById('error-msg');
+        const errorText = document.getElementById('error-text');
+        const logContainer = document.getElementById('log-container');
+        const emptyState = document.getElementById('empty-state');
+        const clearBtn = document.getElementById('clear-btn');
+        const latMobile = document.getElementById('lat-mobile');
+        const lngMobile = document.getElementById('lng-mobile');
+
+        // Initialize Map
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
+            }).addTo(map);
+
+            path = L.polyline([], { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(map);
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                showError("Geolocation not supported");
+                return;
+            }
+
+            isTracking = true;
+            toggleBtn.classList.replace('bg-blue-600', 'bg-red-500/10');
+            toggleBtn.classList.add('text-red-400');
+            btnText.innerText = "Stop Tracking";
+            navIcon.classList.add('animate-pulse');
+            errorMsg.classList.add('hidden');
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude, accuracy, speed } = position.coords;
+                    updateUI(latitude, longitude, accuracy, speed);
+                },
+                (err) => {
+                    showError(err.message);
+                    stopTracking();
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        function stopTracking() {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            isTracking = false;
+            toggleBtn.classList.replace('bg-red-500/10', 'bg-blue-600');
+            toggleBtn.classList.remove('text-red-400');
+            btnText.innerText = "Start Live";
+            navIcon.classList.remove('animate-pulse');
+        }
+
+        function updateUI(lat, lng, acc, speed) {
+            const coords = [lat, lng];
+            
+            accuracyVal.innerText = `${acc.toFixed(1)}m`;
+            speedVal.innerText = `${(speed ? (speed * 3.6) : 0).toFixed(1)} km/h`;
+            latMobile.innerText = lat.toFixed(4);
+            lngMobile.innerText = lng.toFixed(4);
+
+            if (followUser) {
+                map.setView(coords, 16);
+            }
+
+            if (!marker) {
+                marker = L.marker(coords).addTo(map);
+            } else {
+                marker.setLatLng(coords);
+            }
+
+            path.addLatLng(coords);
+            addLogEntry(lat, lng);
+        }
+
+        function addLogEntry(lat, lng) {
+            const time = new Date().toLocaleTimeString();
+            const id = Date.now();
+            
+            emptyState.classList.add('hidden');
+            
+            const entry = document.createElement('div');
+            entry.className = "bg-slate-900/50 border border-slate-700/50 p-3 rounded-xl flex items-center justify-between group hover:border-blue-500/50 transition-colors";
+            entry.innerHTML = `
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                    <span class="text-xs font-mono text-slate-300">
+                        ${lat.toFixed(5)}, ${lng.toFixed(5)}
+                    </span>
+                </div>
+                <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="p-2 text-slate-600 hover:text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+            `;
+            
+            logContainer.prepend(entry);
+            if (logContainer.children.length > 51) {
+                logContainer.lastElementChild.remove();
+            }
+        }
+
+        function showError(msg) {
+            errorText.innerText = msg;
+            errorMsg.classList.remove('hidden');
+        }
+
+        // Event Listeners
+        toggleBtn.addEventListener('click', () => {
+            isTracking ? stopTracking() : startTracking();
+        });
+
+        followBtn.addEventListener('click', () => {
+            followUser = !followUser;
+            followBtn.classList.toggle('bg-blue-600');
+            followBtn.classList.toggle('bg-slate-800');
+            followBtn.classList.toggle('text-white');
+            followBtn.classList.toggle('text-slate-400');
+        });
+
+        clearBtn.addEventListener('click', () => {
+            logContainer.innerHTML = '';
+            logContainer.appendChild(emptyState);
+            emptyState.classList.remove('hidden');
+            path.setLatLngs([]);
+        });
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
